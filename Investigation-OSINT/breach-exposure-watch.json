@@ -1,0 +1,19 @@
+{
+  "meta": {"instanceId": "osint-breach-1"},
+  "nodes": [
+    {"id":"b1","name":"Daily Trigger","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.1,"position":[200,220],"parameters":{"rule":{"interval":[{"field":"days","daysInterval":1}]}}},
+    {"id":"b2","name":"Targets","type":"n8n-nodes-base.set","typeVersion":2,"position":[420,220],"parameters":{"values":{"string":[{"name":"domains","value":"{{ $env.BRANDS_DOMAINS || 'azienda.it,brand.it' }}"}]}}},
+    {"id":"b3","name":"News & Breach Search","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,160],"parameters":{"url":"https://newsapi.org/v2/everything","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendHeaders":true,"headerParameters":{"parameters":[{"name":"X-Api-Key","value":"{{ $env.NEWS_API_KEY }}"}]},"sendQuery":true,"queryParameters":{"parameters":[{"name":"q","value":"={{ $json.domains }}"},{"name":"language","value":"it"},{"name":"pageSize","value":"50"}]}}},
+    {"id":"b4","name":"Paste Monitor","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,300],"parameters":{"url":"https://psbdmp.ws/api/search/{{ $json.domains.split(',')[0] }}"}},
+    {"id":"b5","name":"AI Classifier","type":"@n8n/n8n-nodes-langchain.openAi","typeVersion":1.3,"position":[860,220],"parameters":{"model":"gpt-4","messages":{"messageValues":[{"role":"system","message":"Classifica risultati in: 'breach leak', 'credential exposure', 'negative PR', 'neutral'. Evidenzia urgenza e azioni suggerite. Output JSON per item."},{"role":"user","message":"=Analizza: News {{ JSON.stringify($('News & Breach Search').first().json) }} | Pastes {{ JSON.stringify($('Paste Monitor').first().json) }}"}]},"options":{"temperature":0.2}}},
+    {"id":"b6","name":"Alert & Log","type":"n8n-nodes-base.slack","typeVersion":2.1,"position":[1080,160],"parameters":{"channel":"#brand-security","text":"=🚨 Possibile esposizione dati/PR negativa\nCategoria: {{ $json.category }} | Urgenza: {{ $json.urgency }}\nTitolo/Testo: {{ ($json.title||$json.text||'').slice(0,160) }}\nURL: {{ $json.url || 'n/a' }}"}},
+    {"id":"b7","name":"Airtable Store","type":"n8n-nodes-base.airtable","typeVersion":2,"position":[1080,300],"parameters":{"base":{"baseId":"{{ $env.AIRTABLE_BASE }}"},"table":{"tableId":"{{ $env.AIRTABLE_TABLE }}"},"columns":{"mappingMode":"defineBelow","values":{"Timestamp":"={{ $now.toISO() }}","Category":"={{ $json.category }}","Urgency":"={{ $json.urgency }}","Title":"={{ $json.title || '' }}","URL":"={{ $json.url || '' }}"}}}}
+  ],
+  "connections":{
+    "Daily Trigger":{"main":[[{"node":"Targets","type":"main","index":0}]]},
+    "Targets":{"main":[[{"node":"News & Breach Search","type":"main","index":0},{"node":"Paste Monitor","type":"main","index":0}]]},
+    "News & Breach Search":{"main":[[{"node":"AI Classifier","type":"main","index":0}]]},
+    "Paste Monitor":{"main":[[{"node":"AI Classifier","type":"main","index":0}]]},
+    "AI Classifier":{"main":[[{"node":"Alert & Log","type":"main","index":0},{"node":"Airtable Store","type":"main","index":0}]]}
+  }
+}

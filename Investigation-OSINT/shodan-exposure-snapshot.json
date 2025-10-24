@@ -1,0 +1,21 @@
+{
+  "meta": {"instanceId": "osint-shodan-1"},
+  "nodes": [
+    {"id":"s1","name":"Daily Trigger","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.1,"position":[200,200],"parameters":{"rule":{"interval":[{"field":"days","daysInterval":1}]}}},
+    {"id":"s2","name":"Targets","type":"n8n-nodes-base.set","typeVersion":2,"position":[420,200],"parameters":{"values":{"string":[{"name":"cidr","value":"{{ $env.TARGET_CIDR || '1.2.3.0/24' }}"},{"name":"org","value":"{{ $env.TARGET_ORG || 'AziendaXYZ' }}"}]}}},
+    {"id":"s3","name":"Shodan Query","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,140],"parameters":{"url":"https://api.shodan.io/shodan/host/search","sendQuery":true,"queryParameters":{"parameters":[{"name":"key","value":"{{ $env.SHODAN_KEY }}"},{"name":"query","value":"org:\"{{ $json.org }}\" cidr:{{ $json.cidr }}"},{"name":"limit","value":"100"}]}}},
+    {"id":"s4","name":"Extract Services","type":"n8n-nodes-base.code","typeVersion":2,"position":[860,140],"parameters":{"jsCode":"const res=$input.first().json;const out=[];(res.matches||[]).forEach(m=>{out.push({json:{ip:m.ip_str,port:m.port,proto:m.transport||'',banner:(m.data||'').slice(0,500),product:m.product||'',version:m.version||'',timestamp:m.timestamp||''}})});return out;"}},
+    {"id":"s5","name":"AI Risk Tagging","type":"@n8n/n8n-nodes-langchain.openAi","typeVersion":1.3,"position":[1080,140],"parameters":{"model":"gpt-4","messages":{"messageValues":[{"role":"system","message":"Classifica esposizioni servizi in: LOW/MEDIUM/HIGH/CRITICAL e motiva. Tagga: default creds, outdated, remote mgmt, db exposed, rdp/ssh, iot. JSON con risk, tags, note."},{"role":"user","message":"=Analizza: {{ JSON.stringify($input.all().map(i=>i.json)) }}"}]},"options":{"temperature":0.1}}},
+    {"id":"s6","name":"High or Critical?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1300,140],"parameters":{"conditions":{"options":{"leftValue":"={{ ['HIGH','CRITICAL'].includes($json.risk) }}","operation":"boolean"}}}},
+    {"id":"s7","name":"Slack Alert Sec","type":"n8n-nodes-base.slack","typeVersion":2.1,"position":[1520,80],"parameters":{"channel":"#security","text":"=🔒 Shodan Exposure High\nIP: {{ $json.ip }}:{{ $json.port }} ({{ $json.proto }})\nRischio: {{ $json.risk }}\nTag: {{ $json.tags?.join(', ') }}\nNote: {{ $json.note }}"}},
+    {"id":"s8","name":"Airtable Log","type":"n8n-nodes-base.airtable","typeVersion":2,"position":[1520,220],"parameters":{"base":{"baseId":"{{ $env.AIRTABLE_BASE }}"},"table":{"tableId":"{{ $env.AIRTABLE_TABLE }}"},"columns":{"mappingMode":"defineBelow","values":{"Timestamp":"={{ $now.toISO() }}","IP":"={{ $json.ip }}","Port":"={{ $json.port }}","Proto":"={{ $json.proto }}","Risk":"={{ $json.risk }}","Tags":"={{ $json.tags?.join(', ') }}","Banner":"={{ $json.banner }}"}}}}
+  ],
+  "connections":{
+    "Daily Trigger":{"main":[[{"node":"Targets","type":"main","index":0}]]},
+    "Targets":{"main":[[{"node":"Shodan Query","type":"main","index":0}]]},
+    "Shodan Query":{"main":[[{"node":"Extract Services","type":"main","index":0}]]},
+    "Extract Services":{"main":[[{"node":"AI Risk Tagging","type":"main","index":0}]]},
+    "AI Risk Tagging":{"main":[[{"node":"High or Critical?","type":"main","index":0}]]},
+    "High or Critical?":{"main":[[{"node":"Slack Alert Sec","type":"main","index":0},{"node":"Airtable Log","type":"main","index":0}],[]]}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "meta": {"instanceId": "osint-social-1"},
+  "nodes": [
+    {"id":"w1","name":"Schedule","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.1,"position":[200,200],"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":2}]}}},
+    {"id":"w2","name":"Keywords Config","type":"n8n-nodes-base.set","typeVersion":2,"position":[420,200],"parameters":{"values":{"string":[{"name":"brand","value":"{{ $env.BRAND_NAME || 'AziendaXYZ' }}"}],"boolean":[],"number":[],"date":[]}}},
+    {"id":"w3","name":"Twitter Search","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,120],"parameters":{"url":"https://api.twitter.com/2/tweets/search/recent","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Authorization","value":"Bearer {{ $env.TWITTER_BEARER }}"}]},"sendQuery":true,"queryParameters":{"parameters":[{"name":"query","value":"({{ $json.brand }}) lang:it -is:retweet"},{"name":"max_results","value":"50"}]} }},
+    {"id":"w4","name":"Reddit Search","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,280],"parameters":{"url":"https://www.reddit.com/search.json","sendQuery":true,"queryParameters":{"parameters":[{"name":"q","value":"{{ $json.brand }}"},{"name":"limit","value":"50"}]}}},
+    {"id":"w5","name":"News API","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,440],"parameters":{"url":"https://newsapi.org/v2/everything","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendHeaders":true,"headerParameters":{"parameters":[{"name":"X-Api-Key","value":"{{ $env.NEWS_API_KEY }}"}]},"sendQuery":true,"queryParameters":{"parameters":[{"name":"q","value":"{{ $json.brand }}"},{"name":"language","value":"it"},{"name":"pageSize","value":"50"}]}}},
+    {"id":"w6","name":"AI Sentiment & Risk","type":"@n8n/n8n-nodes-langchain.openAi","typeVersion":1.3,"position":[860,200],"parameters":{"model":"gpt-4","messages":{"messageValues":[{"role":"system","message":"Classifica ogni menzione per SENTIMENT (POS/NEG/NEU), TIPO (Reclamo, Recensione, News, Rumor) e RISCHIO (0-100). Restituisci JSON normalizzato con: source, text, author, url, sentiment, type, risk."},{"role":"user","message":"=Analizza queste menzioni: {{ JSON.stringify($input.all().map(i => i.json)) }}"}]},"options":{"temperature":0.2}}},
+    {"id":"w7","name":"High Risk?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1080,200],"parameters":{"conditions":{"options":{"leftValue":"={{ $json.risk }}","operation":"largerEqual","rightValue":70}}}},
+    {"id":"w8","name":"Slack Alert","type":"n8n-nodes-base.slack","typeVersion":2.1,"position":[1300,120],"parameters":{"channel":"#reputation-alerts","text":"=⚠️ Rischio reputazionale alto\nFonte: {{ $json.source }}\nSentiment: {{ $json.sentiment }}\nRischio: {{ $json.risk }}\nTesto: {{ $json.text.slice(0,280) }}...\nURL: {{ $json.url }}"}},
+    {"id":"w9","name":"Airtable Log","type":"n8n-nodes-base.airtable","typeVersion":2,"position":[1300,280],"parameters":{"base":{"baseId":"{{ $env.AIRTABLE_BASE }}"},"table":{"tableId":"{{ $env.AIRTABLE_TABLE }}"},"columns":{"mappingMode":"defineBelow","values":{"Timestamp":"={{ $now.toISO() }}","Source":"={{ $json.source }}","Text":"={{ $json.text }}","Sentiment":"={{ $json.sentiment }}","Risk":"={{ $json.risk }}","URL":"={{ $json.url }}"}}}}
+  ],
+  "connections":{
+    "Schedule":{"main":[[{"node":"Keywords Config","type":"main","index":0}]]},
+    "Keywords Config":{"main":[[{"node":"Twitter Search","type":"main","index":0},{"node":"Reddit Search","type":"main","index":0},{"node":"News API","type":"main","index":0}]]},
+    "Twitter Search":{"main":[[{"node":"AI Sentiment & Risk","type":"main","index":0}]]},
+    "Reddit Search":{"main":[[{"node":"AI Sentiment & Risk","type":"main","index":0}]]},
+    "News API":{"main":[[{"node":"AI Sentiment & Risk","type":"main","index":0}]]},
+    "AI Sentiment & Risk":{"main":[[{"node":"High Risk?","type":"main","index":0}]]},
+    "High Risk?":{"main":[[{"node":"Slack Alert","type":"main","index":0},{"node":"Airtable Log","type":"main","index":0}],[]]}
+  }
+}

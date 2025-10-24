@@ -1,0 +1,21 @@
+{
+  "meta": {"instanceId": "osint-corr-1"},
+  "nodes": [
+    {"id":"c1","name":"Input Entities","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[200,220],"parameters":{"httpMethod":"POST","path":"correlate","options":{}}},
+    {"id":"c2","name":"Normalize","type":"n8n-nodes-base.code","typeVersion":2,"position":[420,220],"parameters":{"jsCode":"const i=$input.first().json;return [{json:{email:i.email||'',domain:i.domain||'',ip:i.ip||''}}];"}},
+    {"id":"c3","name":"HaveIBeenPwned","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,120],"parameters":{"url":"https://haveibeenpwned.com/api/v3/breachedaccount/{{ $json.email }}","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendHeaders":true,"headerParameters":{"parameters":[{"name":"hibp-api-key","value":"{{ $env.HIBP_KEY }}"},{"name":"user-agent","value":"n8n-workflows"}]}}},
+    {"id":"c4","name":"SecurityTrails DNS","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,220],"parameters":{"url":"https://api.securitytrails.com/v1/domain/{{ $json.domain }}/subdomains","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendHeaders":true,"headerParameters":{"parameters":[{"name":"APIKEY","value":"{{ $env.SECURITYTRAILS_KEY }}"}]}}},
+    {"id":"c5","name":"IP Geodata","type":"n8n-nodes-base.httpRequest","typeVersion":4.1,"position":[640,320],"parameters":{"url":"https://ipinfo.io/{{ $json.ip }}?token={{ $env.IPINFO_TOKEN }}"}},
+    {"id":"c6","name":"AI Correlator","type":"@n8n/n8n-nodes-langchain.openAi","typeVersion":1.3,"position":[860,220],"parameters":{"model":"gpt-4","messages":{"messageValues":[{"role":"system","message":"Correla entità (email, domini, IP) e produci un grafo logico con legami (breach link, hosting, ASN, geografia). Output JSON: nodes, edges, key_insights, risk_score 0-100."},{"role":"user","message":"=Email: {{ $json.email }} | Domain: {{ $json.domain }} | IP: {{ $json.ip }} | HIBP: {{ JSON.stringify($('HaveIBeenPwned').first().json) }} | DNS: {{ JSON.stringify($('SecurityTrails DNS').first().json) }} | GEO: {{ JSON.stringify($('IP Geodata').first().json) }}"}]},"options":{"temperature":0.2}}},
+    {"id":"c7","name":"Store Graph","type":"n8n-nodes-base.airtable","typeVersion":2,"position":[1080,220],"parameters":{"base":{"baseId":"{{ $env.AIRTABLE_BASE }}"},"table":{"tableId":"{{ $env.AIRTABLE_TABLE }}"},"columns":{"mappingMode":"defineBelow","values":{"Timestamp":"={{ $now.toISO() }}","Email":"={{ $json.email }}","Domain":"={{ $json.domain }}","IP":"={{ $json.ip }}","Risk":"={{ $('AI Correlator').item.json.risk_score }}","Insights":"={{ $('AI Correlator').item.json.key_insights?.join('; ') }}"}}}},
+    {"id":"c8","name":"Alert High Risk","type":"n8n-nodes-base.slack","typeVersion":2.1,"position":[1280,120],"parameters":{"channel":"#investigation","text":"=🧠 Correlazione OSINT rischio alto\nEmail: {{ $json.email }} | Dom: {{ $json.domain }} | IP: {{ $json.ip }}\nScore: {{ $('AI Correlator').item.json.risk_score }}\nKey: {{ $('AI Correlator').item.json.key_insights?.slice(0,3).join(' | ') }}"}}
+  ],
+  "connections":{
+    "Input Entities":{"main":[[{"node":"Normalize","type":"main","index":0}]]},
+    "Normalize":{"main":[[{"node":"HaveIBeenPwned","type":"main","index":0},{"node":"SecurityTrails DNS","type":"main","index":0},{"node":"IP Geodata","type":"main","index":0}]]},
+    "HaveIBeenPwned":{"main":[[{"node":"AI Correlator","type":"main","index":0}]]},
+    "SecurityTrails DNS":{"main":[[{"node":"AI Correlator","type":"main","index":0}]]},
+    "IP Geodata":{"main":[[{"node":"AI Correlator","type":"main","index":0}]]},
+    "AI Correlator":{"main":[[{"node":"Store Graph","type":"main","index":0},{"node":"Alert High Risk","type":"main","index":0}]]}
+  }
+}
