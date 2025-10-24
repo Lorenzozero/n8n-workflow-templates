@@ -1,0 +1,390 @@
+{
+  "meta": {
+    "instanceId": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "4b5c6d7e-8f9a-0b1c-2d3e-4f5a6b7c8d9e",
+      "name": "Sync Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "objectType": "contact",
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": {
+          "lastmodifieddate": "={{ $now.minus({minutes: 20}).toMillis() }}"
+        }
+      },
+      "id": "5c6d7e8f-9a0b-1c2d-3e4f-5a6b7c8d9e0f",
+      "name": "Get Updated HubSpot Contacts",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "base": { "baseId": "appXXXXXXXXXXXXXX" },
+        "table": { "tableId": "tblXXXXXXXXXXXXXX" },
+        "operation": "list",
+        "returnAll": true,
+        "filters": {
+          "filterByFormula": "=IS_AFTER({Last Modified}, DATEADD(NOW(), -20, 'minutes'))"
+        }
+      },
+      "id": "6d7e8f9a-0b1c-2d3e-4f5a-6b7c8d9e0f1a",
+      "name": "Get Updated Airtable Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "You are a data synchronization specialist. Compare records from different systems and identify: conflicts, missing fields, data quality issues, and recommend merge strategies. Return structured JSON with sync actions."
+            },
+            {
+              "role": "user",
+              "message": "=Compare and sync these records:\nHubSpot: {{ JSON.stringify($('Get Updated HubSpot Contacts').all()) }}\nAirtable: {{ JSON.stringify($('Get Updated Airtable Records').all()) }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "7e8f9a0b-1c2d-3e4f-5a6b-7c8d9e0f1a2b",
+      "name": "AI Data Conflict Resolver",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.sync_actions?.length }}",
+            "operation": "larger",
+            "rightValue": 0
+          }
+        }
+      },
+      "id": "8f9a0b1c-2d3e-4f5a-6b7c-8d9e0f1a2b3c",
+      "name": "Has Sync Actions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split sync actions by platform\nconst hubspotActions = [];\nconst airtableActions = [];\nconst mailchimpActions = [];\n\nfor (const action of $input.first().json.sync_actions) {\n  if (action.target_platform === 'hubspot') {\n    hubspotActions.push(action);\n  } else if (action.target_platform === 'airtable') {\n    airtableActions.push(action);\n  } else if (action.target_platform === 'mailchimp') {\n    mailchimpActions.push(action);\n  }\n}\n\nreturn [\n  { json: { platform: 'hubspot', actions: hubspotActions } },\n  { json: { platform: 'airtable', actions: airtableActions } },\n  { json: { platform: 'mailchimp', actions: mailchimpActions } }\n];"
+      },
+      "id": "9a0b1c2d-3e4f-5a6b-7c8d-9e0f1a2b3c4d",
+      "name": "Split Sync Actions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "hubspot"
+          }
+        }
+      },
+      "id": "0b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "name": "Is HubSpot?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "airtable"
+          }
+        }
+      },
+      "id": "1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "name": "Is Airtable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "mailchimp"
+          }
+        }
+      },
+      "id": "2d3e4f5a-6b7c-8d9e-0f1a-2b3c4d5e6f7a",
+      "name": "Is Mailchimp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 500]
+    },
+    {
+      "parameters": {
+        "objectType": "contact",
+        "operation": "update",
+        "contactId": "={{ $json.actions[0].record_id }}",
+        "propertiesToSend": {
+          "properties": [
+            {
+              "property": "email",
+              "value": "={{ $json.actions[0].updates.email }}"
+            },
+            {
+              "property": "firstname",
+              "value": "={{ $json.actions[0].updates.firstname }}"
+            },
+            {
+              "property": "lastname",
+              "value": "={{ $json.actions[0].updates.lastname }}"
+            },
+            {
+              "property": "company",
+              "value": "={{ $json.actions[0].updates.company }}"
+            }
+          ]
+        }
+      },
+      "id": "3e4f5a6b-7c8d-9e0f-1a2b-3c4d5e6f7a8b",
+      "name": "Update HubSpot Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [1600, 100]
+    },
+    {
+      "parameters": {
+        "base": { "baseId": "appXXXXXXXXXXXXXX" },
+        "table": { "tableId": "tblXXXXXXXXXXXXXX" },
+        "operation": "update",
+        "id": "={{ $json.actions[0].record_id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "Email": "={{ $json.actions[0].updates.email }}",
+            "Name": "={{ $json.actions[0].updates.name }}",
+            "Company": "={{ $json.actions[0].updates.company }}",
+            "Last Sync": "={{ $now.toISO() }}"
+          }
+        }
+      },
+      "id": "4f5a6b7c-8d9e-0f1a-2b3c-4d5e6f7a8b9c",
+      "name": "Update Airtable Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "listId": "12345",
+        "subscriberHash": "={{ $json.actions[0].record_id }}",
+        "updateFields": {
+          "email_address": "={{ $json.actions[0].updates.email }}",
+          "merge_fields": {
+            "FNAME": "={{ $json.actions[0].updates.firstname }}",
+            "LNAME": "={{ $json.actions[0].updates.lastname }}",
+            "COMPANY": "={{ $json.actions[0].updates.company }}"
+          }
+        }
+      },
+      "id": "5a6b7c8d-9e0f-1a2b-3c4d-5e6f7a8b9c0d",
+      "name": "Update Mailchimp Contact",
+      "type": "n8n-nodes-base.mailchimp",
+      "typeVersion": 2,
+      "position": [1600, 500]
+    },
+    {
+      "parameters": {
+        "base": { "baseId": "appXXXXXXXXXXXXXX" },
+        "table": { "tableId": "tblXXXXXXXXXXXXXX" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "Sync Type": "Automated",
+            "Records Processed": "={{ $('AI Data Conflict Resolver').item.json.sync_actions?.length }}",
+            "Conflicts Resolved": "={{ $('AI Data Conflict Resolver').item.json.conflicts_resolved }}",
+            "Status": "Success",
+            "Platform Updates": "HubSpot, Airtable, Mailchimp",
+            "Data Quality Score": "={{ $('AI Data Conflict Resolver').item.json.quality_score }}/100"
+          }
+        }
+      },
+      "id": "6b7c8d9e-0f1a-2b3c-4d5e-6f7a8b9c0d1e",
+      "name": "Log Sync Results",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1160, 600]
+    },
+    {
+      "parameters": {
+        "channel": "#data-ops",
+        "text": "=🔄 **DATA SYNC COMPLETED** 🔄\n\n📈 **Summary:**\n• Records Processed: {{ $('AI Data Conflict Resolver').item.json.sync_actions?.length }}\n• Conflicts Resolved: {{ $('AI Data Conflict Resolver').item.json.conflicts_resolved }}\n• Data Quality Score: {{ $('AI Data Conflict Resolver').item.json.quality_score }}/100\n\n📊 **Platforms Updated:**\n• HubSpot: {{ $('AI Data Conflict Resolver').item.json.platform_stats?.hubspot || 0 }} records\n• Airtable: {{ $('AI Data Conflict Resolver').item.json.platform_stats?.airtable || 0 }} records\n• Mailchimp: {{ $('AI Data Conflict Resolver').item.json.platform_stats?.mailchimp || 0 }} records\n\n🔍 **Issues Found:** {{ $('AI Data Conflict Resolver').item.json.issues?.length || 0 }}\n🚀 **Next Sync:** {{ $now.plus({minutes: 15}).toLocaleString() }}"
+      },
+      "id": "7c8d9e0f-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+      "name": "Notify Data Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1380, 600]
+    }
+  ],
+  "connections": {
+    "Sync Schedule": {
+      "main": [[
+        {
+          "node": "Get Updated HubSpot Contacts",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Get Updated Airtable Records",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Get Updated HubSpot Contacts": {
+      "main": [[
+        {
+          "node": "AI Data Conflict Resolver",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Get Updated Airtable Records": {
+      "main": [[
+        {
+          "node": "AI Data Conflict Resolver",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "AI Data Conflict Resolver": {
+      "main": [[
+        {
+          "node": "Has Sync Actions?",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Has Sync Actions?": {
+      "main": [
+        [
+          {
+            "node": "Split Sync Actions",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Sync Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Split Sync Actions": {
+      "main": [[
+        {
+          "node": "Is HubSpot?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is Airtable?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is Mailchimp?",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Is HubSpot?": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Airtable?": {
+      "main": [
+        [
+          {
+            "node": "Update Airtable Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Mailchimp?": {
+      "main": [
+        [
+          {
+            "node": "Update Mailchimp Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Log Sync Results": {
+      "main": [[
+        {
+          "node": "Notify Data Team",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    }
+  }
+}
