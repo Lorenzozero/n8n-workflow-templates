@@ -1,0 +1,471 @@
+{
+  "meta": {
+    "instanceId": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Content Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "sheetId": {
+          "mode": "list",
+          "value": "1234567890abcdef"
+        },
+        "range": "A:H",
+        "options": {
+          "usePathForAll": true
+        }
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Get Content Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter content scheduled for current time slot\nconst now = new Date();\nconst currentHour = now.getHours();\nconst todayDate = now.toISOString().split('T')[0];\n\nconst scheduledContent = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  const scheduledDate = data['Scheduled Date'];\n  const scheduledTime = data['Scheduled Time'];\n  const status = data['Status'];\n  \n  if (scheduledDate === todayDate && status === 'Ready' && scheduledTime) {\n    const [hour, minute] = scheduledTime.split(':').map(Number);\n    if (hour === currentHour || (hour === currentHour - 1 && minute > 30)) {\n      scheduledContent.push({\n        json: {\n          content: data['Content'],\n          platform: data['Platform'],\n          hashtags: data['Hashtags'],\n          image_url: data['Image URL'],\n          caption: data['Caption'],\n          link: data['Link'],\n          id: data['ID']\n        }\n      });\n    }\n  }\n}\n\nreturn scheduledContent;"
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Filter Scheduled Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "Instagram"
+          }
+        }
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Is Instagram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "LinkedIn"
+          }
+        }
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Is LinkedIn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.platform }}",
+            "operation": "equal",
+            "rightValue": "Twitter"
+          }
+        }
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Is Twitter?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 600]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Generate engaging Instagram hashtags based on content. Provide mix of popular, niche, and branded hashtags. Limit to 25 hashtags max. Focus on discoverability and engagement."
+            },
+            {
+              "role": "user",
+              "message": "=Generate Instagram hashtags for: {{ $json.content }}"
+            }
+          ]
+        }
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Generate IG Hashtags",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [1160, 100]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/me/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_INSTAGRAM_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }} {{ $('Generate IG Hashtags').item.json.hashtags }}"
+            },
+            {
+              "name": "access_token",
+              "value": "YOUR_INSTAGRAM_TOKEN"
+            }
+          ]
+        }
+      },
+      "id": "9i0j1k2l-3m4n-5o6p-7q8r-9s0t1u2v3w4x",
+      "name": "Post to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1380, 200]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Create professional LinkedIn post. Focus on business value, insights, and professional tone. Include call-to-action. Optimize for LinkedIn algorithm with engagement hooks."
+            },
+            {
+              "role": "user",
+              "message": "=Create LinkedIn post for: {{ $json.content }}"
+            }
+          ]
+        }
+      },
+      "id": "0j1k2l3m-4n5o-6p7q-8r9s-0t1u2v3w4x5y",
+      "name": "Optimize for LinkedIn",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [1160, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.linkedin.com/v2/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_LINKEDIN_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "author",
+              "value": "urn:li:person:YOUR_PERSON_ID"
+            },
+            {
+              "name": "commentary",
+              "value": "={{ $('Optimize for LinkedIn').item.json.optimized_content }}"
+            },
+            {
+              "name": "visibility",
+              "value": "PUBLIC"
+            },
+            {
+              "name": "distribution",
+              "value": "{\"feedDistribution\": \"MAIN_FEED\"}"
+            }
+          ]
+        }
+      },
+      "id": "1k2l3m4n-5o6p-7q8r-9s0t-1u2v3w4x5y6z",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1380, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Create engaging Twitter/X post. Keep under 280 characters. Use relevant hashtags (max 3). Include emojis appropriately. Focus on engagement and retweets."
+            },
+            {
+              "role": "user",
+              "message": "=Create Twitter post for: {{ $json.content }}"
+            }
+          ]
+        }
+      },
+      "id": "2l3m4n5o-6p7q-8r9s-0t1u-2v3w4x5y6z7a",
+      "name": "Optimize for Twitter",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [1160, 500]
+    },
+    {
+      "parameters": {
+        "url": "https://api.twitter.com/2/tweets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_TWITTER_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $('Optimize for Twitter').item.json.optimized_tweet }}"
+            }
+          ]
+        }
+      },
+      "id": "3m4n5o6p-7q8r-9s0t-1u2v-3w4x5y6z7a8b",
+      "name": "Post to Twitter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1380, 600]
+    },
+    {
+      "parameters": {
+        "sheetId": {
+          "mode": "list",
+          "value": "1234567890abcdef"
+        },
+        "range": "A:H",
+        "options": {
+          "usePathForAll": true
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "Status": "Posted",
+            "Posted At": "={{ $now.toISO() }}",
+            "Performance": "Tracking"
+          }
+        },
+        "locationDefine": {
+          "values": {
+            "row": "={{ $json.id + 1 }}"
+          }
+        }
+      },
+      "id": "4n5o6p7q-8r9s-0t1u-2v3w-4x5y6z7a8b9c",
+      "name": "Update Content Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#marketing",
+        "text": "=🚀 **CONTENT PUBLISHED** 🚀\n\n📱 **Platform:** {{ $json.platform }}\n📝 **Content:** {{ $json.content.substring(0, 100) }}...\n🔗 **Link:** {{ $json.link || 'N/A' }}\n🕒 **Published:** {{ $now.toLocaleString() }}\n\n📈 **Tracking:** Performance metrics will be available in 1 hour"
+      },
+      "id": "5o6p7q8r-9s0t-1u2v-3w4x-5y6z7a8b9c0d",
+      "name": "Notify Marketing Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1600, 500]
+    }
+  ],
+  "connections": {
+    "Content Schedule Trigger": {
+      "main": [[
+        {
+          "node": "Get Content Calendar",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Get Content Calendar": {
+      "main": [[
+        {
+          "node": "Filter Scheduled Content",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Filter Scheduled Content": {
+      "main": [[
+        {
+          "node": "Is Instagram?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is LinkedIn?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is Twitter?",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Is Instagram?": {
+      "main": [
+        [
+          {
+            "node": "Generate IG Hashtags",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is LinkedIn?": {
+      "main": [
+        [
+          {
+            "node": "Optimize for LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Twitter?": {
+      "main": [
+        [
+          {
+            "node": "Optimize for Twitter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Generate IG Hashtags": {
+      "main": [[
+        {
+          "node": "Post to Instagram",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Optimize for LinkedIn": {
+      "main": [[
+        {
+          "node": "Post to LinkedIn",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Optimize for Twitter": {
+      "main": [[
+        {
+          "node": "Post to Twitter",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Post to Instagram": {
+      "main": [[
+        {
+          "node": "Update Content Status",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Notify Marketing Team",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Post to LinkedIn": {
+      "main": [[
+        {
+          "node": "Update Content Status",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Notify Marketing Team",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Post to Twitter": {
+      "main": [[
+        {
+          "node": "Update Content Status",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Notify Marketing Team",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    }
+  }
+}

@@ -1,0 +1,283 @@
+{
+  "meta": {
+    "instanceId": "8a9b0c1d-2e3f-4g5h-6i7j-8k9l0m1n2o3p"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "id": "9b0c1d2e-3f4g-5h6i-7j8k-9l0m1n2o3p4q",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse WhatsApp webhook payload\nconst body = $input.first().json.body;\nconst entry = body?.entry?.[0];\nconst changes = entry?.changes?.[0];\nconst value = changes?.value;\nconst messages = value?.messages || [];\nconst contacts = value?.contacts || [];\n\nif (messages.length === 0) {\n  return [];\n}\n\nconst message = messages[0];\nconst contact = contacts.find(c => c.wa_id === message.from) || {};\n\nreturn [{\n  json: {\n    message_id: message.id,\n    from: message.from,\n    contact_name: contact.profile?.name || 'Unknown',\n    message_type: message.type,\n    text: message.text?.body || '',\n    timestamp: message.timestamp,\n    phone_number_id: value.metadata?.phone_number_id\n  }\n}];"
+      },
+      "id": "0c1d2e3f-4g5h-6i7j-8k9l-0m1n2o3p4q5r",
+      "name": "Parse WhatsApp Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "You are a professional customer service AI assistant for a business. Analyze incoming WhatsApp messages and classify them into: 1) SUPPORT (technical help needed), 2) SALES (inquiry about products/services), 3) GENERAL (casual conversation), 4) URGENT (complaint or problem). Also determine sentiment: POSITIVE, NEUTRAL, NEGATIVE. Provide appropriate response suggestions."
+            },
+            {
+              "role": "user",
+              "message": "=Message from {{ $json.contact_name }} ({{ $json.from }}): \"{{ $json.text }}\""
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "1d2e3f4g-5h6i-7j8k-9l0m-1n2o3p4q5r6s",
+      "name": "AI Message Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $('AI Message Analysis').item.json.category }}",
+            "operation": "equal",
+            "rightValue": "URGENT"
+          }
+        }
+      },
+      "id": "2e3f4g5h-6i7j-8k9l-0m1n-2o3p4q5r6s7t",
+      "name": "Is Urgent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $('AI Message Analysis').item.json.sentiment }}",
+            "operation": "equal",
+            "rightValue": "NEGATIVE"
+          }
+        }
+      },
+      "id": "3f4g5h6i-7j8k-9l0m-1n2o-3p4q5r6s7t8u",
+      "name": "Is Negative?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Generate professional WhatsApp response based on message analysis. Keep responses: 1) Helpful and solution-focused 2) Concise (under 160 chars when possible) 3) Empathetic 4) Action-oriented with next steps. Include emojis appropriately."
+            },
+            {
+              "role": "user",
+              "message": "=Generate response for {{ $json.category }} message with {{ $json.sentiment }} sentiment. Original message: \"{{ $('Parse WhatsApp Message').item.json.text }}\". Analysis: {{ $json.response_suggestion }}"
+            }
+          ]
+        }
+      },
+      "id": "4g5h6i7j-8k9l-0m1n-2o3p-4q5r6s7t8u9v",
+      "name": "Generate AI Response",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [720, 600]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v18.0/{{ $('Parse WhatsApp Message').item.json.phone_number_id }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_WHATSAPP_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Parse WhatsApp Message').item.json.from }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"{{ $('Generate AI Response').item.json.response }}\"}"
+            }
+          ]
+        }
+      },
+      "id": "5h6i7j8k-9l0m-1n2o-3p4q-5r6s7t8u9v0w",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [940, 600]
+    },
+    {
+      "parameters": {
+        "channel": "#customer-alerts",
+        "text": "=🚨 **URGENT WHATSAPP MESSAGE** 🚨\n\n👤 **From:** {{ $('Parse WhatsApp Message').item.json.contact_name }} ({{ $('Parse WhatsApp Message').item.json.from }})\n💬 **Message:** {{ $('Parse WhatsApp Message').item.json.text }}\n🔥 **Category:** {{ $('AI Message Analysis').item.json.category }}\n🎭 **Sentiment:** {{ $('AI Message Analysis').item.json.sentiment }}\n\n🎯 **AI Analysis:** {{ $('AI Message Analysis').item.json.response_suggestion }}\n\n⚡ **Action Required:** Manual intervention needed!"
+      },
+      "id": "6i7j8k9l-0m1n-2o3p-4q5r-6s7t8u9v0w1x",
+      "name": "Alert Team - Urgent",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1160, 100]
+    },
+    {
+      "parameters": {
+        "channel": "#customer-feedback",
+        "text": "=😟 **NEGATIVE FEEDBACK ALERT** 😟\n\n👤 **Customer:** {{ $('Parse WhatsApp Message').item.json.contact_name }}\n📱 **Phone:** {{ $('Parse WhatsApp Message').item.json.from }}\n💬 **Message:** {{ $('Parse WhatsApp Message').item.json.text }}\n\n🎭 **Sentiment Analysis:** {{ $('AI Message Analysis').item.json.sentiment }}\n🔧 **Suggested Action:** {{ $('AI Message Analysis').item.json.response_suggestion }}\n\n✅ **AI Response Sent:** {{ $('Generate AI Response').item.json.response }}\n\n📅 **Follow-up Required:** Yes - Customer Success team should reach out within 2 hours"
+      },
+      "id": "7j8k9l0m-1n2o-3p4q-5r6s-7t8u9v0w1x2y",
+      "name": "Alert Team - Negative",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1160, 400]
+    },
+    {
+      "parameters": {
+        "base": { "baseId": "appXXXXXXXXXXXXXX" },
+        "table": { "tableId": "tblXXXXXXXXXXXXXX" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "Phone Number": "={{ $('Parse WhatsApp Message').item.json.from }}",
+            "Contact Name": "={{ $('Parse WhatsApp Message').item.json.contact_name }}",
+            "Message": "={{ $('Parse WhatsApp Message').item.json.text }}",
+            "Category": "={{ $('AI Message Analysis').item.json.category }}",
+            "Sentiment": "={{ $('AI Message Analysis').item.json.sentiment }}",
+            "AI Response": "={{ $('Generate AI Response').item.json.response }}",
+            "Status": "Responded"
+          }
+        }
+      },
+      "id": "8k9l0m1n-2o3p-4q5r-6s7t-8u9v0w1x2y3z",
+      "name": "Log Conversation",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1160, 600]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [[
+        {
+          "node": "Parse WhatsApp Message",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Parse WhatsApp Message": {
+      "main": [[
+        {
+          "node": "AI Message Analysis",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "AI Message Analysis": {
+      "main": [[
+        {
+          "node": "Is Urgent?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is Negative?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Generate AI Response",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Is Urgent?": {
+      "main": [
+        [
+          {
+            "node": "Alert Team - Urgent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Negative?": {
+      "main": [
+        [
+          {
+            "node": "Alert Team - Negative",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Generate AI Response": {
+      "main": [[
+        {
+          "node": "Send WhatsApp Reply",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Send WhatsApp Reply": {
+      "main": [[
+        {
+          "node": "Log Conversation",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    }
+  }
+}

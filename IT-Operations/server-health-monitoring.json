@@ -1,0 +1,297 @@
+{
+  "meta": {
+    "instanceId": "4a5b6c7d-8e9f-0g1h-2i3j-4k5l6m7n8o9p"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "5b6c7d8e-9f0g-1h2i-3j4k-5l6m7n8o9p0q",
+      "name": "Health Check Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [280, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define servers to monitor\nconst servers = [\n  { name: 'Web Server 1', url: 'https://api.company.com/health', type: 'web' },\n  { name: 'Database Server', url: 'https://db.company.com/status', type: 'database' },\n  { name: 'Redis Cache', url: 'https://redis.company.com/ping', type: 'cache' },\n  { name: 'Elasticsearch', url: 'https://search.company.com/_cluster/health', type: 'search' },\n  { name: 'File Server', url: 'https://files.company.com/status', type: 'storage' }\n];\n\nreturn servers.map(server => ({ json: server }));"
+      },
+      "id": "6c7d8e9f-0g1h-2i3j-4k5l-6m7n8o9p0q1r",
+      "name": "Define Servers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "count": 3,
+            "delay": 1000
+          }
+        }
+      },
+      "id": "7d8e9f0g-1h2i-3j4k-5l6m-7n8o9p0q1r2s",
+      "name": "Check Server Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze server response and determine health status\nconst server = $('Define Servers').item.json;\nconst response = $input.first();\n\nconst startTime = Date.now();\nlet status = 'healthy';\nlet issues = [];\nlet responseTime = 0;\n\ntry {\n  const responseData = response.json;\n  responseTime = response.headers?.['x-response-time'] || 0;\n  \n  // Check HTTP status\n  if (response.statusCode >= 400) {\n    status = 'unhealthy';\n    issues.push(`HTTP ${response.statusCode} error`);\n  }\n  \n  // Check response time\n  if (responseTime > 5000) {\n    status = 'degraded';\n    issues.push('High response time');\n  }\n  \n  // Server-specific health checks\n  if (server.type === 'database') {\n    if (responseData.connections?.active > 80) {\n      status = 'warning';\n      issues.push('High database connections');\n    }\n  }\n  \n  if (server.type === 'web') {\n    if (responseData.cpu_usage > 90) {\n      status = 'critical';\n      issues.push('High CPU usage');\n    }\n    if (responseData.memory_usage > 85) {\n      status = 'warning';\n      issues.push('High memory usage');\n    }\n  }\n  \n} catch (error) {\n  status = 'unhealthy';\n  issues.push('Connection failed or invalid response');\n}\n\nreturn [{\n  json: {\n    server_name: server.name,\n    server_type: server.type,\n    url: server.url,\n    status: status,\n    response_time: responseTime,\n    issues: issues,\n    timestamp: new Date().toISOString(),\n    raw_response: $input.first().json\n  }\n}];"
+      },
+      "id": "8e9f0g1h-2i3j-4k5l-6m7n-8o9p0q1r2s3t",
+      "name": "Analyze Health Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.status }}",
+            "operation": "equal",
+            "rightValue": "unhealthy"
+          }
+        }
+      },
+      "id": "9f0g1h2i-3j4k-5l6m-7n8o-9p0q1r2s3t4u",
+      "name": "Is Unhealthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "={{ $json.status }}",
+            "operation": "equal",
+            "rightValue": "critical"
+          }
+        }
+      },
+      "id": "0g1h2i3j-4k5l-6m7n-8o9p-0q1r2s3t4u5v",
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 400]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts-critical",
+        "text": "=🚨 **CRITICAL SERVER ALERT** 🚨\n\n💻 **Server:** {{ $json.server_name }} ({{ $json.server_type }})\n🔴 **Status:** {{ $json.status.toUpperCase() }}\n🔗 **URL:** {{ $json.url }}\n⏱️ **Response Time:** {{ $json.response_time }}ms\n\n🐛 **Issues:**\n{{ $json.issues.map(issue => '• ' + issue).join('\\n') }}\n\n🕒 **Time:** {{ $json.timestamp }}\n\n⚠️ **Action Required:** Immediate investigation needed!\n@channel"
+      },
+      "id": "1h2i3j4k-5l6m-7n8o-9p0q-1r2s3t4u5v6w",
+      "name": "Critical Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1380, 100]
+    },
+    {
+      "parameters": {
+        "channel": "#ops-monitoring",
+        "text": "=🔴 **SERVER DOWN** 🔴\n\n💻 **Server:** {{ $json.server_name }}\n🎯 **Type:** {{ $json.server_type }}\n🔗 **URL:** {{ $json.url }}\n🐛 **Issues:** {{ $json.issues.join(', ') }}\n🕒 **Time:** {{ $json.timestamp }}\n\n🚑 **Escalating to on-call engineer..."
+      },
+      "id": "2i3j4k5l-6m7n-8o9p-0q1r-2s3t4u5v6w7x",
+      "name": "Unhealthy Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1380, 300]
+    },
+    {
+      "parameters": {
+        "to": "oncall@company.com",
+        "subject": "=URGENT: {{ $json.server_name }} Server Alert",
+        "emailType": "html",
+        "message": "=<h2>🚨 Server Health Alert</h2>\n<p><strong>Server:</strong> {{ $json.server_name }} ({{ $json.server_type }})</p>\n<p><strong>Status:</strong> <span style='color: red;'>{{ $json.status.toUpperCase() }}</span></p>\n<p><strong>URL:</strong> {{ $json.url }}</p>\n<p><strong>Response Time:</strong> {{ $json.response_time }}ms</p>\n\n<h3>Issues Detected:</h3>\n<ul>\n{{ $json.issues.map(issue => '<li>' + issue + '</li>').join('') }}\n</ul>\n\n<p><strong>Timestamp:</strong> {{ $json.timestamp }}</p>\n\n<p>Please investigate immediately.</p>"
+      },
+      "id": "3j4k5l6m-7n8o-9p0q-1r2s-3t4u5v6w7x8y",
+      "name": "Email On-Call",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1380, 500]
+    },
+    {
+      "parameters": {
+        "url": "https://api.pagerduty.com/incidents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token token=YOUR_PAGERDUTY_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "From",
+              "value": "monitoring@company.com"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "incident",
+              "value": "{\n  \"type\": \"incident\",\n  \"title\": \"{{ $json.server_name }} - {{ $json.status }}\",\n  \"service\": {\n    \"id\": \"YOUR_SERVICE_ID\",\n    \"type\": \"service_reference\"\n  },\n  \"urgency\": \"high\",\n  \"body\": {\n    \"type\": \"incident_body\",\n    \"details\": \"Server {{ $json.server_name }} is {{ $json.status }}. Issues: {{ $json.issues.join(', ') }}\"\n  }\n}"
+            }
+          ]
+        }
+      },
+      "id": "4k5l6m7n-8o9p-0q1r-2s3t-4u5v6w7x8y9z",
+      "name": "Create PagerDuty Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1600, 100]
+    },
+    {
+      "parameters": {
+        "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=📊 Server Health Summary ({{ $now.toLocaleString() }}):\n\n{{ $('Analyze Health Status').all().map(item => {\n  const status = item.json.status;\n  const emoji = status === 'healthy' ? '✅' : status === 'warning' ? '⚠️' : status === 'degraded' ? '🟡' : '🔴';\n  return `${emoji} ${item.json.server_name}: ${status} (${item.json.response_time}ms)`;\n}).join('\\n') }}"
+            }
+          ]
+        }
+      },
+      "id": "5l6m7n8o-9p0q-1r2s-3t4u-5v6w7x8y9z0a",
+      "name": "Send Health Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1160, 600]
+    },
+    {
+      "parameters": {
+        "base": { "baseId": "appXXXXXXXXXXXXXX" },
+        "table": { "tableId": "tblXXXXXXXXXXXXXX" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "values": {
+            "Timestamp": "={{ $json.timestamp }}",
+            "Server Name": "={{ $json.server_name }}",
+            "Server Type": "={{ $json.server_type }}",
+            "Status": "={{ $json.status }}",
+            "Response Time (ms)": "={{ $json.response_time }}",
+            "Issues": "={{ $json.issues.join(', ') }}",
+            "URL": "={{ $json.url }}"
+          }
+        }
+      },
+      "id": "6m7n8o9p-0q1r-2s3t-4u5v-6w7x8y9z0a1b",
+      "name": "Log Health Data",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1380, 600]
+    }
+  ],
+  "connections": {
+    "Health Check Schedule": {
+      "main": [[
+        {
+          "node": "Define Servers",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Define Servers": {
+      "main": [[
+        {
+          "node": "Check Server Health",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Check Server Health": {
+      "main": [[
+        {
+          "node": "Analyze Health Status",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Analyze Health Status": {
+      "main": [[
+        {
+          "node": "Is Unhealthy?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Is Critical?",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Send Health Summary",
+          "type": "main",
+          "index": 0
+        },
+        {
+          "node": "Log Health Data",
+          "type": "main",
+          "index": 0
+        }
+      ]]
+    },
+    "Is Unhealthy?": {
+      "main": [
+        [
+          {
+            "node": "Unhealthy Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email On-Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Is Critical?": {
+      "main": [
+        [
+          {
+            "node": "Critical Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create PagerDuty Incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}
