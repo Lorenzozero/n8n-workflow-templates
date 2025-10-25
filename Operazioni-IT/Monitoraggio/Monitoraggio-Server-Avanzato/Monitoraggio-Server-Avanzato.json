@@ -1,0 +1,348 @@
+{
+  "name": "Monitoraggio Server Avanzato",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7c7b4c3a-8b0e-4d7e-a6f5-2c9d8e7f0a1b",
+      "name": "Avvio Monitoraggio",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.server_url }}/health",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      "name": "Controllo Uptime Server",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "notEqual",
+              "value2": "200"
+            }
+          ]
+        }
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-l2m3n4o5p6q7",
+      "name": "Server Offline?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "options": {},
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.slackApi.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "{{ $node[\"Configurazione\"].json.slack_channel }}"
+            },
+            {
+              "name": "text",
+              "value": "🚨 ALERT CRITICO: Server {{ $node[\"Lista Server\"].json.nome_server }} è offline!\n\nDettagli:\n- URL: {{ $node[\"Lista Server\"].json.server_url }}\n- Timestamp: {{ new Date().toISOString() }}\n- Codice risposta: {{ $json.status || 'Timeout' }}\n\nAzione richiesta: Verifica immediata dell'infrastruttura."
+            },
+            {
+              "name": "username",
+              "value": "Sistema Monitoraggio IT"
+            },
+            {
+              "name": "icon_emoji",
+              "value": ":warning:"
+            }
+          ]
+        }
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-m3n4o5p6q7r8",
+      "name": "Alert Slack Critico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "slack_channel",
+              "value": "#alerts-it"
+            },
+            {
+              "name": "email_destinatario",
+              "value": "sysadmin@azienda.it"
+            },
+            {
+              "name": "soglia_cpu",
+              "value": "85"
+            },
+            {
+              "name": "soglia_memoria",
+              "value": "90"
+            },
+            {
+              "name": "soglia_disco",
+              "value": "80"
+            }
+          ]
+        }
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-n4o5p6q7r8s9",
+      "name": "Configurazione",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "nome_server",
+              "value": "Server Produzione Web"
+            },
+            {
+              "name": "server_url",
+              "value": "https://app.azienda.it"
+            },
+            {
+              "name": "tipo_server",
+              "value": "web"
+            }
+          ]
+        }
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-o5p6q7r8s9t0",
+      "name": "Lista Server",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [240, 100]
+    },
+    {
+      "parameters": {
+        "command": "df -h && free -m && top -bn1 | grep 'Cpu(s)'"
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-p6q7r8s9t0u1",
+      "name": "Controllo Risorse Sistema",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.stdout;\nconst lines = output.split('\\n');\n\n// Parsing CPU\nconst cpuLine = lines.find(line => line.includes('Cpu(s)'));\nconst cpuMatch = cpuLine ? cpuLine.match(/(\\d+\\.\\d+)%us/) : null;\nconst cpuUsage = cpuMatch ? parseFloat(cpuMatch[1]) : 0;\n\n// Parsing Memory\nconst memLine = lines.find(line => line.includes('Mem:'));\nconst memMatch = memLine ? memLine.match(/Mem:\\s+(\\d+)\\s+(\\d+)/) : null;\nconst memTotal = memMatch ? parseInt(memMatch[1]) : 0;\nconst memUsed = memMatch ? parseInt(memMatch[2]) : 0;\nconst memUsage = memTotal > 0 ? Math.round((memUsed / memTotal) * 100) : 0;\n\n// Parsing Disk\nconst diskLine = lines.find(line => line.includes('/dev/'));\nconst diskMatch = diskLine ? diskLine.match(/(\\d+)%/) : null;\nconst diskUsage = diskMatch ? parseInt(diskMatch[1]) : 0;\n\nreturn {\n  cpu_usage: cpuUsage,\n  memory_usage: memUsage,\n  disk_usage: diskUsage,\n  timestamp: new Date().toISOString(),\n  server_name: $node['Lista Server'].json.nome_server\n};"
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-q7r8s9t0u1v2",
+      "name": "Analisi Metriche Sistema",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.cpu_usage }}",
+              "operation": "larger",
+              "value2": "={{ parseInt($node['Configurazione'].json.soglia_cpu) }}"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-r8s9t0u1v2w3",
+      "name": "Soglie Critiche Superate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "url": "={{ $node['Configurazione'].json.webhook_pagerduty }}",
+        "options": {},
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonParameters": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "routing_key",
+              "value": "{{ $credentials.pagerduty.routing_key }}"
+            },
+            {
+              "name": "event_action",
+              "value": "trigger"
+            },
+            {
+              "name": "payload",
+              "value": "={\n  \"summary\": \"Risorse server critiche - {{ $json.server_name }}\",\n  \"severity\": \"critical\",\n  \"source\": \"n8n-monitoring\",\n  \"custom_details\": {\n    \"cpu_usage\": \"{{ $json.cpu_usage }}%\",\n    \"memory_usage\": \"{{ $json.memory_usage }}%\",\n    \"disk_usage\": \"{{ $json.disk_usage }}%\",\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}"
+            }
+          ]
+        }
+      },
+      "id": "9i0j1k2l-3m4n-5o6p-7q8r-s9t0u1v2w3x4",
+      "name": "Escalation PagerDuty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "subject": "🔴 ALERT SISTEMA: Risorse critiche su {{ $json.server_name }}",
+        "emailType": "html",
+        "message": "=<h2 style=\"color: #d32f2f;\">Alert Sistema - Risorse Critiche</h2>\n\n<p><strong>Server:</strong> {{ $json.server_name }}</p>\n<p><strong>Timestamp:</strong> {{ $json.timestamp }}</p>\n\n<h3>Metriche Attuali:</h3>\n<ul>\n  <li><strong>CPU:</strong> {{ $json.cpu_usage }}% (Soglia: {{ $node['Configurazione'].json.soglia_cpu }}%)</li>\n  <li><strong>Memoria:</strong> {{ $json.memory_usage }}% (Soglia: {{ $node['Configurazione'].json.soglia_memoria }}%)</li>\n  <li><strong>Disco:</strong> {{ $json.disk_usage }}% (Soglia: {{ $node['Configurazione'].json.soglia_disco }}%)</li>\n</ul>\n\n<p><strong>Azione richiesta:</strong> Intervento immediato per verificare e risolvere il sovraccarico delle risorse.</p>\n\n<hr>\n<small>Questo alert è stato generato automaticamente dal sistema di monitoraggio n8n.</small>",
+        "toEmail": "={{ $node['Configurazione'].json.email_destinatario }}"
+      },
+      "id": "0j1k2l3m-4n5o-6p7q-8r9s-t0u1v2w3x4y5",
+      "name": "Email Alert Critico",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [1340, 600]
+    }
+  ],
+  "connections": {
+    "Avvio Monitoraggio": {
+      "main": [
+        [
+          {
+            "node": "Lista Server",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Configurazione",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lista Server": {
+      "main": [
+        [
+          {
+            "node": "Controllo Uptime Server",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Controllo Uptime Server": {
+      "main": [
+        [
+          {
+            "node": "Server Offline?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Server Offline?": {
+      "main": [
+        [
+          {
+            "node": "Alert Slack Critico",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Controllo Risorse Sistema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Controllo Risorse Sistema": {
+      "main": [
+        [
+          {
+            "node": "Analisi Metriche Sistema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analisi Metriche Sistema": {
+      "main": [
+        [
+          {
+            "node": "Soglie Critiche Superate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soglie Critiche Superate?": {
+      "main": [
+        [
+          {
+            "node": "Escalation PagerDuty",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Alert Critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "monitoraggio-server-avanzato",
+  "tags": ["IT", "monitoring", "alerts", "automation"]
+}
